@@ -67,5 +67,67 @@ namespace PlcSimWebApi
             }
             catch (Exception ex) { return BadRequest(ex.Message); }
         }
+
+        [HttpPost]
+        [Route("instances")]
+        public IHttpActionResult CreateInstance([FromBody] CreateInstanceRequest request)
+        {
+            try
+            {
+                if (request == null || string.IsNullOrWhiteSpace(request.Name))
+                    return BadRequest("El nombre de la instancia es obligatorio.");
+
+                // Llamamos al servicio pasándole el objeto limpio
+                PlcService.Instance.CreateInstance(request);
+
+                return Ok(new { Message = $"Instancia '{request.Name}' creada correctamente." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpDelete]
+        [Route("instances/{name}")]
+        public IHttpActionResult DeleteInstance(string name)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(name))
+                    return BadRequest("Debes especificar el nombre de la instancia a eliminar.");
+
+                PlcService.Instance.DeleteInstance(name);
+
+                return Ok(new { Message = $"Instancia '{name}' eliminada correctamente." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpGet]
+        [Route("tags-with-values")]
+        public IHttpActionResult GetTagsWithValues()
+        {
+            try
+            {
+                var tags = PlcService.Instance.GetTagsWithValues();
+                return Ok(tags);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+    }
+    public class CreateInstanceRequest
+    {
+        public string Name { get; set; }
+        public string NetworkType { get; set; }
+        public string IpAddress { get; set; }
+        public string SubnetMask { get; set; }
+        public string DefaultGateway { get; set; }
     }
 }

@@ -32,6 +32,43 @@ namespace PlcSimWebApi
 
         private PlcService() { }
 
+
+        public List<object> GetTagsWithValues()
+        {
+            if (_plcInstance == null) throw new Exception("No conectado a ninguna instancia.");
+
+            lock (_lock)
+            {
+                _plcInstance.UpdateTagList();
+                var result = new List<object>();
+
+                foreach (STagInfo tag in _plcInstance.TagInfos)
+                { 
+                    if (TypeNames.TryGetValue(tag.PrimitiveDataType, out string typeName) && (!tag.Name.StartsWith("RTG") && !tag.Name.StartsWith("F_SystemInfo")))
+                    {
+                        string valorActual;
+                        try
+                        {
+                            valorActual = ReadValue(tag.Name, typeName);
+                        }
+                        catch (Exception)
+                        {
+                            // Si el PLC está en STOP o hay un error con un tag específico, evitamos que rompa toda la lista
+                            valorActual = "Error al leer";
+                        }
+
+                        result.Add(new
+                        {
+                            Name = tag.Name,
+                            Type = typeName,
+                            Value = valorActual
+                        });
+                    }
+                }
+                return result;
+            }
+        }
+
         public List<object> GetInstances()
         {
             if (!SimulationRuntimeManager.IsRuntimeManagerAvailable)
@@ -139,6 +176,75 @@ namespace PlcSimWebApi
             if (value is float f) return f.ToString(CultureInfo.InvariantCulture);
             if (value is double d) return d.ToString(CultureInfo.InvariantCulture);
             return Convert.ToString(value, CultureInfo.InvariantCulture);
+        }
+
+        public void CreateInstance(CreateInstanceRequest req)
+        {
+            // Comprobar si ya existe...
+            var instanciasActuales = SimulationRuntimeManager.RegisteredInstanceInfo;
+            if (instanciasActuales != null)
+            {
+                foreach (var info in instanciasActuales)
+                {
+                    if (info.Name.Equals(req.Name, StringComparison.OrdinalIgnoreCase))
+                        throw new Exception($"Ya existe una instancia con el nombre '{req.Name}'.");
+                }
+            }
+
+            // Configurar el modo de red GLOBAL antes de registrar la instancia
+            if (!string.IsNullOrEmpty(req.NetworkType))
+            {
+                if (req.NetworkType.ToLower() == "softbus")
+                {
+                    SimulationRuntimeManager.NetworkMode = ENetworkMode.Softbus;
+                }
+                else if (req.NetworkType.ToLower() == "tcpip")
+                {
+                    SimulationRuntimeManager.NetworkMode = ENetworkMode.TCPIPSingleAdapter;
+                    // Nota: Aquí podrías guardar req.IpAddress en tu base de datos o 
+                    // imprimirla en consola como hacías antes, a la espera del TIA Portal.
+                }
+            }
+
+            // Registrar la nueva instancia (usando tu formato de CPU no especificada)
+            IInstance newInstance = SimulationRuntimeManager.RegisterInstance(ECPUType.CPU1500_SW_OC_Unspecified, req.Name);
+
+            // Encenderla
+            newInstance.PowerOn();
+        }
+
+        public void DeleteInstance(string name)
+        {
+            // 1. Buscamos si la instancia existe
+            var instanciasActuales = SimulationRuntimeManager.RegisteredInstanceInfo;
+            bool existe = false;
+
+            if (instanciasActuales != null)
+            {
+                foreach (var info in instanciasActuales)
+                {
+                    if (info.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        existe = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!existe)
+            {
+                throw new Exception($"No se encontró ninguna instancia activa con el nombre '{name}'.");
+            }
+
+            // 2. Nos conectamos a ella para apagarla y destruirla
+            IInstance instanceToDelete = SimulationRuntimeManager.CreateInterface(name);
+
+            if (instanceToDelete.OperatingState != EOperatingState.Off)
+            {
+                instanceToDelete.PowerOff();
+            }
+
+            instanceToDelete.UnregisterInstance();
         }
     }
 }
