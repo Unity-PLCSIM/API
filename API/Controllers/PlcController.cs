@@ -1,4 +1,24 @@
-﻿using System;
+﻿//----------------------------------------------------------------------------------------------------------------------
+// CONTROLADOR PLC, TIA PORTAL API
+//
+// Desc: Controlador Web API que expone los endpoints REST para interactuar con
+//       instancias PLC y sus tags a través de PlcService.
+//
+// Endpoints:
+//   GET    /api/plc/instances              → Lista instancias registradas
+//   POST   /api/plc/instances/{id}/connect → Conecta a una instancia por ID
+//   POST   /api/plc/instances              → Crea una nueva instancia PLC
+//   DELETE /api/plc/instances/{name}       → Elimina una instancia por nombre
+//   GET    /api/plc/tags                   → Lista tags disponibles
+//   GET    /api/plc/tags/{tag}?type=       → Lee el valor de un tag
+//   PUT    /api/plc/tags/{tag}             → Escribe el valor de un tag
+//   GET    /api/plc/tags-with-values       → Lista tags con su valor actual
+//
+// Autor: Alex Asensio
+// Date: Julio 2026
+//----------------------------------------------------------------------------------------------------------------------
+
+using System;
 using System.Web.Http;
 
 namespace PlcSimWebApi
@@ -122,6 +142,10 @@ namespace PlcSimWebApi
             }
         }
     }
+
+    /// <summary>
+    /// Cuerpo de la petición de creación de instancia PLC.
+    /// </summary>
     public class CreateInstanceRequest
     {
         public string Name { get; set; }

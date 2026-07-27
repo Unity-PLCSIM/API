@@ -1,4 +1,24 @@
-﻿using Siemens.Simatic.Simulation.Runtime;
+﻿//----------------------------------------------------------------------------------------------------------------------
+// SERVICIO PLC, TIA PORTAL API
+//
+// Desc: Capa de negocio que abstrae la comunicación con PLCSim Advanced a través
+//       de la librería Siemens.Simatic.Simulation.Runtime. Expone métodos para
+//       gestionar instancias y leer/escribir tags del PLC.
+//
+// Coms:  - Singleton: acceder siempre a través de PlcService.Instance
+//        - Thread-safe: todas las operaciones sobre _plcInstance están bajo lock
+//        - Requiere que el Runtime Manager de PLCSim Advanced esté en ejecución
+//
+// Uso:
+//   PlcService.Instance.Connect(0);
+//   string val = PlcService.Instance.ReadValue("Motor", "Bool");
+//   PlcService.Instance.WriteValue("Marcha", "true", "Bool");
+//
+// Autor: Alex Asensio
+// Date: Julio 2026
+//----------------------------------------------------------------------------------------------------------------------
+
+using Siemens.Simatic.Simulation.Runtime;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -14,6 +34,9 @@ namespace PlcSimWebApi
         private IInstance _plcInstance;
         private readonly object _lock = new object();
 
+        /// <summary>
+        /// Traduce los tipos primitivos de PLCSim a los nombres de tipo usados en la API.
+        /// </summary>
         private static readonly Dictionary<EPrimitiveDataType, string> TypeNames =
             new Dictionary<EPrimitiveDataType, string>
             {
@@ -32,7 +55,13 @@ namespace PlcSimWebApi
 
         private PlcService() { }
 
+        // -- Tags ---------------------------------------------------------------
 
+        /// <summary>
+        /// Devuelve la lista completa de tags con nombre, tipo y valor actual.
+        /// Excluye tags internos de sistema (RTG, F_SystemInfo).
+        /// Si un tag falla al leerse devuelve "Error al leer" en su valor.
+        /// </summary>
         public List<object> GetTagsWithValues()
         {
             if (_plcInstance == null) throw new Exception("No conectado a ninguna instancia.");
@@ -43,7 +72,7 @@ namespace PlcSimWebApi
                 var result = new List<object>();
 
                 foreach (STagInfo tag in _plcInstance.TagInfos)
-                { 
+                {
                     if (TypeNames.TryGetValue(tag.PrimitiveDataType, out string typeName) && (!tag.Name.StartsWith("RTG") && !tag.Name.StartsWith("F_SystemInfo")))
                     {
                         string valorActual;
@@ -69,6 +98,11 @@ namespace PlcSimWebApi
             }
         }
 
+        // -- Instancias ---------------------------------------------------------
+
+        /// <summary>
+        /// Devuelve la lista de instancias PLC registradas en el Runtime Manager.
+        /// </summary>
         public List<object> GetInstances()
         {
             if (!SimulationRuntimeManager.IsRuntimeManagerAvailable)
@@ -82,6 +116,10 @@ namespace PlcSimWebApi
             return result;
         }
 
+        /// <summary>
+        /// Conecta el servicio a la instancia PLC con el ID indicado y actualiza la lista de tags.
+        /// </summary>
+        /// <param name="id">ID de la instancia registrada en el Runtime Manager.</param>
         public void Connect(int id)
         {
             lock (_lock)
@@ -91,6 +129,9 @@ namespace PlcSimWebApi
             }
         }
 
+        /// <summary>
+        /// Devuelve la lista de tags disponibles en la instancia conectada (nombre y tipo).
+        /// </summary>
         public List<TagItemDto> GetTags()
         {
             if (_plcInstance == null) throw new Exception("No conectado a ninguna instancia.");
@@ -111,6 +152,11 @@ namespace PlcSimWebApi
             }
         }
 
+        /// <summary>
+        /// Lee el valor actual de un tag por nombre y tipo.
+        /// </summary>
+        /// <param name="tag">Nombre exacto del tag.</param>
+        /// <param name="type">Tipo del tag (ej: "Bool", "DInt (Int32)").</param>
         public string ReadValue(string tag, string type)
         {
             if (_plcInstance == null) throw new Exception("No conectado.");
@@ -137,6 +183,12 @@ namespace PlcSimWebApi
             }
         }
 
+        /// <summary>
+        /// Escribe un valor en un tag por nombre y tipo.
+        /// </summary>
+        /// <param name="tag">Nombre exacto del tag.</param>
+        /// <param name="raw">Valor a escribir como string (ej: "true", "42").</param>
+        /// <param name="type">Tipo del tag (ej: "Bool", "DInt (Int32)").</param>
         public void WriteValue(string tag, string raw, string type)
         {
             if (_plcInstance == null) throw new Exception("No conectado.");
@@ -161,6 +213,9 @@ namespace PlcSimWebApi
             }
         }
 
+        /// <summary>
+        /// Parsea un string como bool admitiendo múltiples formatos (true/false, 1/0, si/no, on/off).
+        /// </summary>
         private static bool ParseBool(string raw)
         {
             switch (raw.Trim().ToLowerInvariant())
@@ -171,6 +226,10 @@ namespace PlcSimWebApi
             }
         }
 
+        /// <summary>
+        /// Formatea un valor numérico a string usando cultura invariante para evitar
+        /// problemas con separadores decimales según el sistema operativo.
+        /// </summary>
         private static string FormatValue(object value)
         {
             if (value is float f) return f.ToString(CultureInfo.InvariantCulture);
@@ -178,6 +237,10 @@ namespace PlcSimWebApi
             return Convert.ToString(value, CultureInfo.InvariantCulture);
         }
 
+        /// <summary>
+        /// Crea y enciende una nueva instancia PLC con el nombre y configuración de red indicados.
+        /// Lanza una excepción si ya existe una instancia con el mismo nombre.
+        /// </summary>
         public void CreateInstance(CreateInstanceRequest req)
         {
             // Comprobar si ya existe...
@@ -213,6 +276,10 @@ namespace PlcSimWebApi
             newInstance.PowerOn();
         }
 
+        /// <summary>
+        /// Apaga y elimina la instancia PLC con el nombre indicado.
+        /// Lanza una excepción si no se encuentra ninguna instancia con ese nombre.
+        /// </summary>
         public void DeleteInstance(string name)
         {
             // 1. Buscamos si la instancia existe
