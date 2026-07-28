@@ -22,6 +22,7 @@ using Siemens.Simatic.Simulation.Runtime;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace PlcSimWebApi
 {
@@ -33,6 +34,21 @@ namespace PlcSimWebApi
 
         private IInstance _plcInstance;
         private readonly object _lock = new object();
+
+        // Detección de cambios en salidas
+        private Dictionary<string, string> _lastOutputValues = new Dictionary<string, string>();
+        private List<object> _pendingOutputChanges = new List<object>();
+        private readonly object _changesLock = new object();
+
+        // Hilo de polling de salidas
+        private System.Threading.Thread _pollThread;
+        private volatile bool _pollRunning = false;
+
+        // Throttling: baja frecuencia si Unity no consulta en ClientTimeoutS segundos
+        private DateTime _lastClientPoll = DateTime.MinValue;
+        private const int FastIntervalMs = 100;
+        private const int SlowIntervalMs = 1000;
+        private const int ClientTimeoutS = 5;
 
         /// <summary>
         /// Traduce los tipos primitivos de PLCSim a los nombres de tipo usados en la API.
@@ -58,7 +74,7 @@ namespace PlcSimWebApi
         // -- Tags ---------------------------------------------------------------
 
         /// <summary>
-        /// Devuelve la lista completa de tags con nombre, tipo y valor actual.
+        /// Devuelve la lista completa de tags con nombre, tipo, valor actual y área (E/S).
         /// Excluye tags internos de sistema (RTG, F_SystemInfo).
         /// Si un tag falla al leerse devuelve "Error al leer" en su valor.
         /// </summary>
@@ -73,7 +89,9 @@ namespace PlcSimWebApi
 
                 foreach (STagInfo tag in _plcInstance.TagInfos)
                 {
-                    if (TypeNames.TryGetValue(tag.PrimitiveDataType, out string typeName) && (!tag.Name.StartsWith("RTG") && !tag.Name.StartsWith("F_SystemInfo")))
+                    if (TypeNames.TryGetValue(tag.PrimitiveDataType, out string typeName)
+                        && !tag.Name.StartsWith("RTG")
+                        && !tag.Name.StartsWith("F_SystemInfo"))
                     {
                         string valorActual;
                         try
@@ -86,14 +104,34 @@ namespace PlcSimWebApi
                             valorActual = "Error al leer";
                         }
 
+                        string area = tag.Area == EArea.Input ? "E" :
+                                      tag.Area == EArea.Output ? "S" : "O";
+
                         result.Add(new
                         {
                             Name = tag.Name,
                             Type = typeName,
-                            Value = valorActual
+                            Value = valorActual,
+                            Area = area
                         });
                     }
                 }
+                return result;
+            }
+        }
+
+        /// <summary>
+        /// Devuelve los tags de salida que han cambiado desde la última consulta y limpia la lista.
+        /// Registra el timestamp de la consulta para el throttling del hilo de polling.
+        /// </summary>
+        public List<object> GetOutputTagsWithValues()
+        {
+            _lastClientPoll = DateTime.UtcNow;
+
+            lock (_changesLock)
+            {
+                var result = new List<object>(_pendingOutputChanges);
+                _pendingOutputChanges.Clear();
                 return result;
             }
         }
@@ -118,15 +156,27 @@ namespace PlcSimWebApi
 
         /// <summary>
         /// Conecta el servicio a la instancia PLC con el ID indicado y actualiza la lista de tags.
+        /// Arranca el hilo de detección de cambios en salidas.
         /// </summary>
         /// <param name="id">ID de la instancia registrada en el Runtime Manager.</param>
         public void Connect(int id)
         {
             lock (_lock)
             {
+                // Parar hilo anterior si existía
+                StopPollThread();
+
                 _plcInstance = SimulationRuntimeManager.CreateInterface(id);
                 _plcInstance.UpdateTagList();
+
+                lock (_changesLock)
+                {
+                    _lastOutputValues.Clear();
+                    _pendingOutputChanges.Clear();
+                }
             }
+
+            StartPollThread();
         }
 
         /// <summary>
@@ -213,6 +263,117 @@ namespace PlcSimWebApi
             }
         }
 
+        // -- Hilo de detección de cambios en salidas ----------------------------
+
+        /// <summary>
+        /// Arranca el hilo de polling de salidas en background.
+        /// </summary>
+        private void StartPollThread()
+        {
+            _pollRunning = true;
+            _pollThread = new System.Threading.Thread(PollLoop)
+            {
+                IsBackground = true,
+                Name = "PlcOutputPoller"
+            };
+            _pollThread.Start();
+        }
+
+        /// <summary>
+        /// Para el hilo de polling de salidas esperando máximo 500ms.
+        /// </summary>
+        private void StopPollThread()
+        {
+            _pollRunning = false;
+            _pollThread?.Join(500);
+            _pollThread = null;
+        }
+
+        /// <summary>
+        /// Bucle del hilo: duerme FastIntervalMs o SlowIntervalMs según si Unity sigue consultando.
+        /// </summary>
+        private void PollLoop()
+        {
+            while (_pollRunning)
+            {
+                int interval = (DateTime.UtcNow - _lastClientPoll).TotalSeconds > ClientTimeoutS
+                    ? SlowIntervalMs
+                    : FastIntervalMs;
+
+                System.Threading.Thread.Sleep(interval);
+
+                if (!_pollRunning) break;
+
+                try { DetectarCambiosSalidas(); }
+                catch { }
+            }
+        }
+
+        /// <summary>
+        /// Lee todas las salidas de golpe, compara con el estado anterior
+        /// y acumula en _pendingOutputChanges solo las que han cambiado.
+        /// </summary>
+        private void DetectarCambiosSalidas()
+        {
+            STagInfo[] outputTags;
+            SDataValueByName[] signals;
+
+            lock (_lock)
+            {
+                if (_plcInstance == null) return;
+
+                outputTags = _plcInstance.TagInfos
+                    .Where(t => t.Area == EArea.Output
+                             && TypeNames.ContainsKey(t.PrimitiveDataType)
+                             && !t.Name.StartsWith("RTG")
+                             && !t.Name.StartsWith("F_SystemInfo"))
+                    .ToArray();
+
+                if (outputTags.Length == 0) return;
+
+                signals = outputTags
+                    .Select(t => new SDataValueByName { Name = t.Name })
+                    .ToArray();
+
+                _plcInstance.ReadSignals(ref signals);
+            }
+
+            // Comparar fuera del lock de _plcInstance para no bloquearlo
+            lock (_changesLock)
+            {
+                for (int i = 0; i < outputTags.Length; i++)
+                {
+                    if (signals[i].ErrorCode != ERuntimeErrorCode.OK) continue;
+
+                    string name = outputTags[i].Name;
+                    string newVal = signals[i].DataValue.ToString();
+                    TypeNames.TryGetValue(outputTags[i].PrimitiveDataType, out string typeName);
+
+                    if (!_lastOutputValues.TryGetValue(name, out string oldVal) || oldVal != newVal)
+                    {
+                        _lastOutputValues[name] = newVal;
+
+                        // Sobreescribir si ya había un cambio pendiente para este tag
+                        for (int j = _pendingOutputChanges.Count - 1; j >= 0; j--)
+                        {
+                            if (((TagChangeDto)_pendingOutputChanges[j]).Name == name)
+                                _pendingOutputChanges.RemoveAt(j);
+                        }
+
+                        _pendingOutputChanges.Add(new TagChangeDto
+                        {
+                            Name = name,
+                            Type = typeName,
+                            Value = newVal,
+                            Area = "S"
+                        });
+                    }
+                }
+            }
+        }
+
+        // -- Utilidades ---------------------------------------------------------
+
         /// <summary>
         /// Parsea un string como bool admitiendo múltiples formatos (true/false, 1/0, si/no, on/off).
         /// </summary>
@@ -243,7 +404,6 @@ namespace PlcSimWebApi
         /// </summary>
         public void CreateInstance(CreateInstanceRequest req)
         {
-            // Comprobar si ya existe...
             var instanciasActuales = SimulationRuntimeManager.RegisteredInstanceInfo;
             if (instanciasActuales != null)
             {
@@ -254,7 +414,6 @@ namespace PlcSimWebApi
                 }
             }
 
-            // Configurar el modo de red GLOBAL antes de registrar la instancia
             if (!string.IsNullOrEmpty(req.NetworkType))
             {
                 if (req.NetworkType.ToLower() == "softbus")
@@ -264,15 +423,10 @@ namespace PlcSimWebApi
                 else if (req.NetworkType.ToLower() == "tcpip")
                 {
                     SimulationRuntimeManager.NetworkMode = ENetworkMode.TCPIPSingleAdapter;
-                    // Nota: Aquí podrías guardar req.IpAddress en tu base de datos o 
-                    // imprimirla en consola como hacías antes, a la espera del TIA Portal.
                 }
             }
 
-            // Registrar la nueva instancia (usando tu formato de CPU no especificada)
             IInstance newInstance = SimulationRuntimeManager.RegisterInstance(ECPUType.CPU1500_SW_OC_Unspecified, req.Name);
-
-            // Encenderla
             newInstance.PowerOn();
         }
 
@@ -282,7 +436,6 @@ namespace PlcSimWebApi
         /// </summary>
         public void DeleteInstance(string name)
         {
-            // 1. Buscamos si la instancia existe
             var instanciasActuales = SimulationRuntimeManager.RegisteredInstanceInfo;
             bool existe = false;
 
@@ -299,19 +452,22 @@ namespace PlcSimWebApi
             }
 
             if (!existe)
-            {
                 throw new Exception($"No se encontró ninguna instancia activa con el nombre '{name}'.");
-            }
 
-            // 2. Nos conectamos a ella para apagarla y destruirla
             IInstance instanceToDelete = SimulationRuntimeManager.CreateInterface(name);
 
             if (instanceToDelete.OperatingState != EOperatingState.Off)
-            {
                 instanceToDelete.PowerOff();
-            }
 
             instanceToDelete.UnregisterInstance();
         }
+    }
+
+    public class TagChangeDto
+    {
+        public string Name { get; set; }
+        public string Type { get; set; }
+        public string Value { get; set; }
+        public string Area { get; set; }
     }
 }

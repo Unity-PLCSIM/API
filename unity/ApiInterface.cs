@@ -62,6 +62,7 @@ public class ApiInterface : MonoBehaviour
         public string Name;
         public string Type;
         public string Value;
+        public string Area;
     }
 
     [Serializable]
@@ -141,6 +142,20 @@ public class ApiInterface : MonoBehaviour
     public void GetTagsWithValues(Action<List<TagWithValue>> onSuccess, Action<string> onError = null)
     {
         string url = $"{baseUrl}/tags-with-values";
+        StartCoroutine(GetRequest(url, (json) =>
+        {
+            string wrapped = "{\"items\":" + json + "}";
+            TagWithValueList result = JsonUtility.FromJson<TagWithValueList>(wrapped);
+            onSuccess?.Invoke(result.items);
+        }, onError));
+    }
+
+    /// <summary>
+    /// Obtiene todos los tags tipo SALIDA con su tipo y valor en una sola petición.
+    /// </summary>
+    public void GetOutputTagsWithValues(Action<List<TagWithValue>> onSuccess, Action<string> onError = null)
+    {
+        string url = $"{baseUrl}/output-tags-with-values";
         StartCoroutine(GetRequest(url, (json) =>
         {
             string wrapped = "{\"items\":" + json + "}";

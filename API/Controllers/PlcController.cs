@@ -141,6 +141,21 @@ namespace PlcSimWebApi
                 return BadRequest(ex.Message);
             }
         }
+
+        [HttpGet]
+        [Route("output-tags-with-values")]
+        public IHttpActionResult GetOutputTagsWithValues()
+        {
+            try
+            {
+                var tags = PlcService.Instance.GetOutputTagsWithValues();
+                return Ok(tags);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
     }
 
     /// <summary>
