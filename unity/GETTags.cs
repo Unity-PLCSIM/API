@@ -3,7 +3,7 @@
 //
 // Desc: Panel de interfaz gráfica para visualizar y modificar tags PLC.
 //       Muestra nombre, tipo, valor, dirección (E/S) y permite editar entradas.
-//       Las salidas se actualizan por polling. Las entradas se modifican via PUT.
+//       Las salidas se actualizan por WebSocket (push). Las entradas se modifican via PUT.
 //
 // Coms:  - Requiere ApiInterface en la escena (Singleton)
 //        - Situar el botón junto a otros paneles en la barra superior
@@ -35,8 +35,6 @@ public class PlcTagPanel : MonoBehaviour
 
     private string _status     = "Pulsa 'Tags PLC' para cargar";
     private bool   _loading    = false;
-    private float  _pollTimer  = 0f;
-    private const float PollInterval = 0.5f;
 
     // -- Estilos GUI ------------------------------------------------------------
     private GUIStyle _styleBox;
@@ -92,19 +90,9 @@ public class PlcTagPanel : MonoBehaviour
         _stylesReady = true;
     }
 
-    // -- Update: polling --------------------------------------------------------
+    // -- Update -----------------------------------------------------------------
 
-    void Update()
-    {
-        if (!_visible || _loading || _tags.Count == 0) return;
-
-        _pollTimer += Time.deltaTime;
-        if (_pollTimer >= PollInterval)
-        {
-            _pollTimer = 0f;
-            PollSalidas();
-        }
-    }
+    void Update() { } // [WS] El WebSocket de ApiInterface ya llama a DispatchMessageQueue()
 
     // -- Layout helpers ---------------------------------------------------------
 
@@ -150,6 +138,7 @@ public class PlcTagPanel : MonoBehaviour
 
                 _status  = $"{_tags.Count} tags · " + System.DateTime.Now.ToString("HH:mm:ss");
                 _loading = false;
+                SuscribirSalidas(); // [WS] sustituye al polling HTTP de salidas
             },
             err =>
             {
@@ -159,25 +148,25 @@ public class PlcTagPanel : MonoBehaviour
         );
     }
 
-    void PollSalidas()
+    /// <summary>
+    /// Suscribe por WebSocket cada tag de salida conocido.
+    /// El servidor empujará el nuevo valor cada vez que cambie;
+    /// aquí solo actualizamos el diccionario local para que OnGUI lo pinte.
+    /// </summary>
+    void SuscribirSalidas()                                        // [WS]
     {
-        _loading = true;
+        foreach (string name in _order)
+        {
+            if (!_tags.TryGetValue(name, out TagData td)) continue;
+            if (td.Area != "S") continue;
 
-        ApiInterface.Instance.GetOutputTagsWithValues(
-            tags =>
+            // Capturar referencia local para el closure
+            TagData tdLocal = td;
+            ApiInterface.Instance.SubscribeOutputTag(td.Name, value =>
             {
-                foreach (var t in tags)
-                {
-                    if (_tags.TryGetValue(t.Name, out TagData td))
-                        td.Value = t.Value;
-                }
-                _loading = false;
-            },
-            err =>
-            {
-                _loading = false;
-            }
-        );
+                tdLocal.Value = value;
+            });
+        }
     }
 
     void EscribirEntrada(TagData td, string nuevoValor)
@@ -188,8 +177,7 @@ public class PlcTagPanel : MonoBehaviour
             {
                 td.Value      = nuevoValor;
                 td.EditBuffer = nuevoValor;
-                // Forzar poll inmediato de salidas tras escribir
-                PollSalidas();
+                // [WS] El WebSocket notificará el cambio de salidas automáticamente
             },
             err => _status = "Error escritura: " + err
         );

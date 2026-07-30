@@ -17,7 +17,8 @@ netsh advfirewall firewall add rule name="API PLCSim Port 9000" dir=in action=al
 ```
 
 ### 2. Configurar Unity
-En `Edit > Project Settings > Player > Other Settings`, cambia `Allow downloads over HTTP` a `Always allowed`.
+- En `Edit > Project Settings > Player > Other Settings`, cambia `Allow downloads over HTTP` a `Always allowed`.
+- Instalar `NativeWebSocket` mediante https://github.com/endel/NativeWebSocket.git#upm
 
 ### 3. Añadir los scripts al proyecto
 Copia los archivos de `unity/` a tu proyecto de Unity:

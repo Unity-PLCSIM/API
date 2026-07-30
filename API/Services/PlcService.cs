@@ -143,6 +143,7 @@ namespace PlcSimWebApi
         /// </summary>
         public List<object> GetInstances()
         {
+            Console.WriteLine("Lllego aqui");
             if (!SimulationRuntimeManager.IsRuntimeManagerAvailable)
                 throw new Exception("Runtime Manager no disponible.");
 
@@ -151,6 +152,7 @@ namespace PlcSimWebApi
             {
                 result.Add(new { info.ID, info.Name });
             }
+            Console.WriteLine("Voy a devolver");
             return result;
         }
 
@@ -338,7 +340,9 @@ namespace PlcSimWebApi
                 _plcInstance.ReadSignals(ref signals);
             }
 
-            // Comparar fuera del lock de _plcInstance para no bloquearlo
+            // Acumular cambios de este ciclo para emitirlos por WebSocket de golpe
+            List<TagChangeDto> cambiosEsteCiclo = new List<TagChangeDto>();
+
             lock (_changesLock)
             {
                 for (int i = 0; i < outputTags.Length; i++)
@@ -346,30 +350,38 @@ namespace PlcSimWebApi
                     if (signals[i].ErrorCode != ERuntimeErrorCode.OK) continue;
 
                     string name = outputTags[i].Name;
-                    string newVal = signals[i].DataValue.ToString();
+                    string newVal;
+                    try { newVal = ReadValue(outputTags[i].Name, TypeNames[outputTags[i].PrimitiveDataType]); }
+                    catch { continue; }
                     TypeNames.TryGetValue(outputTags[i].PrimitiveDataType, out string typeName);
 
                     if (!_lastOutputValues.TryGetValue(name, out string oldVal) || oldVal != newVal)
                     {
                         _lastOutputValues[name] = newVal;
 
-                        // Sobreescribir si ya había un cambio pendiente para este tag
                         for (int j = _pendingOutputChanges.Count - 1; j >= 0; j--)
                         {
                             if (((TagChangeDto)_pendingOutputChanges[j]).Name == name)
                                 _pendingOutputChanges.RemoveAt(j);
                         }
 
-                        _pendingOutputChanges.Add(new TagChangeDto
+                        // Crear el objeto una vez y reutilizarlo en ambas listas
+                        var cambio = new TagChangeDto
                         {
                             Name = name,
                             Type = typeName,
                             Value = newVal,
                             Area = "S"
-                        });
+                        };
+
+                        _pendingOutputChanges.Add(cambio);   // compatibilidad REST existente
+                        cambiosEsteCiclo.Add(cambio);        // para WebSocket
                     }
                 }
             }
+
+            // Emitir fuera del lock — Broadcast es thread-safe internamente
+            WebSocketHandler.Broadcast(cambiosEsteCiclo);
         }
 
         // -- Utilidades ---------------------------------------------------------

@@ -12,8 +12,8 @@
 //   Añadir este script a cualquier GameObject activo en la escena.
 //   El botón "Instancias" aparecerá en la esquina superior izquierda de la pantalla.
 //
-// Autor:
-// Date:
+// Autor: Alex Asensio
+// Date: Julio 2026
 //----------------------------------------------------------------------------------------------------------------------
 
 using System.Collections.Generic;
