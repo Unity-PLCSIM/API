@@ -131,6 +131,23 @@ public class PlcInstancePanelUI : MonoBehaviour
         StyleTopButton(_btnRefresh, compact: true);
         _btnRefresh.style.marginLeft = 10f;
         _titleBar.Add(_btnRefresh);
+
+        // Botón Run
+        var btnRun = new Button(() => PlcInstanceDataService.Instance?.Run()) { text = "▶  Run" };
+        StyleTopButton(btnRun, compact: true);
+        btnRun.style.marginLeft = 6f;
+        btnRun.style.backgroundColor = ColAccent;
+        btnRun.style.color = Color.black;
+        _titleBar.Add(btnRun);
+
+        // Botón Stop
+        var btnStop = new Button(() => PlcInstanceDataService.Instance?.Stop()) { text = "■  Stop" };
+        StyleTopButton(btnStop, compact: true);
+        btnStop.style.marginLeft = 6f;
+        btnStop.style.backgroundColor = ColErr;
+        btnStop.style.color = Color.white;
+        _titleBar.Add(btnStop);
+
         _panel.Add(_titleBar);
 
         _panelWidth = InitW - 40f; 

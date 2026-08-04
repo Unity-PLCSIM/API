@@ -356,6 +356,34 @@ public class ApiInterface : MonoBehaviour
         }, onError));
     }
 
+    /// <summary>
+    /// Pone el PLC en modo RUN.
+    /// Equivale a POST /instances/run
+    /// </summary>
+    public void RunInstance(Action<string> onSuccess = null, Action<string> onError = null)
+    {
+        string url = $"{baseUrl}/instances/run";
+        StartCoroutine(PostRequest(url, "", (responseJson) =>
+        {
+            ApiMessage result = JsonUtility.FromJson<ApiMessage>(responseJson);
+            onSuccess?.Invoke(result.Message);
+        }, onError));
+    }
+
+    /// <summary>
+    /// Pone el PLC en modo STOP.
+    /// Equivale a POST /instances/stop
+    /// </summary>
+    public void StopInstance(Action<string> onSuccess = null, Action<string> onError = null)
+    {
+        string url = $"{baseUrl}/instances/stop";
+        StartCoroutine(PostRequest(url, "", (responseJson) =>
+        {
+            ApiMessage result = JsonUtility.FromJson<ApiMessage>(responseJson);
+            onSuccess?.Invoke(result.Message);
+        }, onError));
+    }
+
     // -- WEBSOCKET — conexión y reconexión --------------------------------------
 
     /// <summary>

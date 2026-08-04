@@ -7,6 +7,9 @@
 // Endpoints:
 //   GET    /api/plc/instances              → Lista instancias registradas
 //   POST   /api/plc/instances/{id}/connect → Conecta a una instancia por ID
+//   POST   /api/plc/instances/disconnect   → Se desconecta de la instancia actual
+//   POST   /api/plc/instances/{id}/run     → Ejecuta la instancia por ID
+//   POST   /api/plc/instances/{id}/stop    → Detiene la instancia por ID
 //   POST   /api/plc/instances              → Crea una nueva instancia PLC
 //   DELETE /api/plc/instances/{name}       → Elimina una instancia por nombre
 //   GET    /api/plc/tags                   → Lista tags disponibles
@@ -58,6 +61,30 @@ namespace PlcSimWebApi
             {
                 PlcService.Instance.Disconnect();
                 return Ok(new { Message = "Desconectado de la instancia" });
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
+        [HttpPost]
+        [Route("instances/run")]
+        public IHttpActionResult Run()
+        {
+            try
+            {
+                PlcService.Instance.Run();
+                return Ok(new { Message = $"Instancia ejecutada correctamente." });
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
+        [HttpPost]
+        [Route("instances/stop")]
+        public IHttpActionResult Stop()
+        {
+            try
+            {
+                PlcService.Instance.Stop();
+                return Ok(new { Message = $"Instancia detenida correctamente." });
             }
             catch (Exception ex) { return BadRequest(ex.Message); }
         }

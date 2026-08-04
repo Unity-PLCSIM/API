@@ -75,7 +75,7 @@ public class PlcInstanceDataService : MonoBehaviour
     }
 
     /// <summary>
-    /// Conecta a una instancia específica.
+    /// Desconecta la instancia
     /// </summary>
     public void DisconnectInstance()
     {
@@ -92,6 +92,50 @@ public class PlcInstanceDataService : MonoBehaviour
             { 
                 ConnectMessage = "Error: " + err;
                 DisconnectionStatusChanged?.Invoke();
+            }
+        );
+    }
+
+    /// <summary>
+    /// Pone en marcha la instancia
+    /// </summary>
+    public void Run()
+    {
+        ConnectMessage = "Poniendo en RUN...";
+        OnConnectionStatusChanged?.Invoke();
+
+        ApiInterface.Instance.RunInstance(
+            msg =>
+            {
+                ConnectMessage = "OK · " + msg;
+                OnConnectionStatusChanged?.Invoke();
+            },
+            err =>
+            {
+                ConnectMessage = "Error: " + err;
+                OnConnectionStatusChanged?.Invoke();
+            }
+        );
+    }
+
+    /// <summary>
+    /// Para la instancia
+    /// </summary>
+    public void Stop()
+    {
+        ConnectMessage = "Poniendo en STOP...";
+        OnConnectionStatusChanged?.Invoke();
+
+        ApiInterface.Instance.StopInstance(
+            msg =>
+            {
+                ConnectMessage = "OK · " + msg;
+                OnConnectionStatusChanged?.Invoke();
+            },
+            err =>
+            {
+                ConnectMessage = "Error: " + err;
+                OnConnectionStatusChanged?.Invoke();
             }
         );
     }

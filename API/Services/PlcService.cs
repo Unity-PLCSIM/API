@@ -71,6 +71,15 @@ namespace PlcSimWebApi
 
         private PlcService() { }
 
+        /// <summary>
+        /// Asegura que haya una instancia PLC conectada.
+        /// </summary>
+        private void EnsureConnected()
+        {
+            if (_plcInstance == null)
+                throw new Exception("No conectado a ninguna instancia.");
+        }
+
         // -- Tags ---------------------------------------------------------------
 
         /// <summary>
@@ -80,7 +89,7 @@ namespace PlcSimWebApi
         /// </summary>
         public List<object> GetTagsWithValues()
         {
-            if (_plcInstance == null) throw new Exception("No conectado a ninguna instancia.");
+            EnsureConnected();
 
             lock (_lock)
             {
@@ -126,6 +135,7 @@ namespace PlcSimWebApi
         /// </summary>
         public List<object> GetOutputTagsWithValues()
         {
+            EnsureConnected();  
             _lastClientPoll = DateTime.UtcNow;
 
             lock (_changesLock)
@@ -190,6 +200,38 @@ namespace PlcSimWebApi
             {
                 StopPollThread();
                 _plcInstance = null;
+            }
+        }
+
+        public bool Run()
+        {
+            try
+            {
+                EnsureConnected();
+                _plcInstance.Run(6000);
+                Console.WriteLine("PLC en modo RUN.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error al poner en RUN: {ex.Message}");
+                return false;
+            }
+        }
+
+        public bool Stop()
+        {
+            try
+            {
+                EnsureConnected();
+                _plcInstance.Stop(6000);
+                Console.WriteLine("PLC en modo STOP.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error al poner en STOP: {ex.Message}");
+                return false;
             }
         }
 
