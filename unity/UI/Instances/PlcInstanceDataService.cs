@@ -14,6 +14,7 @@ public class PlcInstanceDataService : MonoBehaviour
     // -- Eventos para avisar a la interfaz --
     public event Action OnInstancesLoaded;
     public event Action OnConnectionStatusChanged;
+    public event Action DisconnectionStatusChanged;
 
     private void Awake()
     {
@@ -69,6 +70,28 @@ public class PlcInstanceDataService : MonoBehaviour
             { 
                 ConnectMessage = "Error: " + err;
                 OnConnectionStatusChanged?.Invoke();
+            }
+        );
+    }
+
+    /// <summary>
+    /// Conecta a una instancia específica.
+    /// </summary>
+    public void DisconnectInstance()
+    {
+        ConnectMessage = $"Desconectando de instancia ...";
+        DisconnectionStatusChanged?.Invoke();
+
+        ApiInterface.Instance.DisconnectInstance(
+            msg => 
+            { 
+                ConnectMessage = "OK · " + msg;
+                DisconnectionStatusChanged?.Invoke();
+            },
+            err => 
+            { 
+                ConnectMessage = "Error: " + err;
+                DisconnectionStatusChanged?.Invoke();
             }
         );
     }

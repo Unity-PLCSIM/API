@@ -182,6 +182,18 @@ namespace PlcSimWebApi
         }
 
         /// <summary>
+        /// Desconecta el servicio de la instancia PLC actual y para el hilo de detección de cambios en salidas.
+        /// </summary>
+        public void Disconnect()
+        {
+            lock (_lock)
+            {
+                StopPollThread();
+                _plcInstance = null;
+            }
+        }
+
+        /// <summary>
         /// Devuelve la lista de tags disponibles en la instancia conectada (nombre y tipo).
         /// </summary>
         public List<TagItemDto> GetTags()

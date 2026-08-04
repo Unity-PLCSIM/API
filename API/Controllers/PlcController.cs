@@ -50,6 +50,18 @@ namespace PlcSimWebApi
             catch (Exception ex) { return BadRequest(ex.Message); }
         }
 
+        [HttpPost]
+        [Route("instances/disconnect")]
+        public IHttpActionResult Disconnect()
+        {
+            try
+            {
+                PlcService.Instance.Disconnect();
+                return Ok(new { Message = "Desconectado de la instancia" });
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
         [HttpGet]
         [Route("tags")]
         public IHttpActionResult GetTags()

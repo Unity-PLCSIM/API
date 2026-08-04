@@ -340,6 +340,22 @@ public class ApiInterface : MonoBehaviour
         }, onError));
     }
 
+     /// <summary>
+    /// Desconecta la instancia PLC a la que estábamos suscritos.
+    /// Equivale a POST /instances/disconnect
+    /// </summary>
+    /// <param name="onSuccess">Recibe el mensaje de confirmación de la API.</param>
+    /// <param name="onError">Recibe el mensaje de error (opcional).</param>
+    public void DisconnectInstance(Action<string> onSuccess = null, Action<string> onError = null)
+    {
+        string url = $"{baseUrl}/instances/disconnect";
+        StartCoroutine(PostRequest(url, "", (responseJson) =>
+        {
+            ApiMessage result = JsonUtility.FromJson<ApiMessage>(responseJson);
+            onSuccess?.Invoke(result.Message);
+        }, onError));
+    }
+
     // -- WEBSOCKET — conexión y reconexión --------------------------------------
 
     /// <summary>

@@ -230,25 +230,39 @@ public class PlcInstancePanelUI : MonoBehaviour
         lblName.style.whiteSpace = WhiteSpace.NoWrap;
         row.Add(lblName);
 
+        // Contenedor de acciones (flex-row con Justify.SpaceBetween para separar botones)
         var actCell = new VisualElement { name = "cell-act" };
         actCell.style.width = W(PWAction);
         actCell.style.flexShrink = 0f;
         actCell.style.flexDirection = FlexDirection.Row;
         actCell.style.alignItems = Align.Center;
+        actCell.style.justifyContent = Justify.SpaceBetween; 
 
-        var btnConnect = new Button { name = "btn-connect", text = "Conectar" };
         float btnH = Mathf.Max(20f, _fontSize * 1.8f);
-        btnConnect.style.width = W(PWAction) - 10f;
+
+        // Botón Conectar
+        var btnConnect = new Button { name = "btn-connect", text = "Conectar" };
         btnConnect.style.height = btnH;
         btnConnect.style.flexShrink = 0f;
         btnConnect.style.backgroundColor = ColBtnOk;
         btnConnect.style.color = Color.white;
-        btnConnect.style.fontSize = _fontSize;
         btnConnect.style.borderTopLeftRadius = 3f; btnConnect.style.borderTopRightRadius = 3f;
         btnConnect.style.borderBottomLeftRadius = 3f; btnConnect.style.borderBottomRightRadius = 3f;
         btnConnect.style.borderTopWidth = 0f; btnConnect.style.borderBottomWidth = 0f;
         btnConnect.style.borderLeftWidth = 0f; btnConnect.style.borderRightWidth = 0f;
         actCell.Add(btnConnect);
+
+        // Botón Desconectar
+        var btnDisconnect = new Button { name = "btn-disconnect", text = "Desconectar" };
+        btnDisconnect.style.height = btnH;
+        btnDisconnect.style.flexShrink = 0f;
+        btnDisconnect.style.backgroundColor = ColErr; // Usamos el color rojo de tu paleta
+        btnDisconnect.style.color = Color.white;
+        btnDisconnect.style.borderTopLeftRadius = 3f; btnDisconnect.style.borderTopRightRadius = 3f;
+        btnDisconnect.style.borderBottomLeftRadius = 3f; btnDisconnect.style.borderBottomRightRadius = 3f;
+        btnDisconnect.style.borderTopWidth = 0f; btnDisconnect.style.borderBottomWidth = 0f;
+        btnDisconnect.style.borderLeftWidth = 0f; btnDisconnect.style.borderRightWidth = 0f;
+        actCell.Add(btnDisconnect);
 
         row.Add(actCell);
         return row;
@@ -276,11 +290,16 @@ public class PlcInstancePanelUI : MonoBehaviour
         var actCell = el.Q<VisualElement>("cell-act");
         if (actCell != null) actCell.style.width = W(PWAction);
 
+        // Repartir el ancho de la columna de acción entre los dos botones (dejando 6px de margen total)
+        float halfWidth = (W(PWAction) / 2f) - 6f; 
+        float btnHeight = Mathf.Max(20f, _fontSize * 1.8f);
+
+        // Lógica Conectar
         var btnConnect = el.Q<Button>("btn-connect");
         if (btnConnect != null)
         {
-            btnConnect.style.width = W(PWAction) - 10f;
-            btnConnect.style.height = Mathf.Max(20f, _fontSize * 1.8f);
+            btnConnect.style.width = halfWidth;
+            btnConnect.style.height = btnHeight;
             btnConnect.style.fontSize = _fontSize;
 
             if (btnConnect.userData is Action oldCb)
@@ -289,6 +308,28 @@ public class PlcInstancePanelUI : MonoBehaviour
             Action connectAction = () => service.ConnectToInstance(inst.ID.ToString());
             btnConnect.userData = connectAction;
             btnConnect.clicked += connectAction;
+        }
+
+        // Lógica Desconectar
+        var btnDisconnect = el.Q<Button>("btn-disconnect");
+        if (btnDisconnect != null)
+        {
+            btnDisconnect.style.width = halfWidth;
+            btnDisconnect.style.height = btnHeight;
+            btnDisconnect.style.fontSize = _fontSize;
+
+            if (btnDisconnect.userData is Action oldCb)
+                btnDisconnect.clicked -= oldCb;
+
+            Action disconnectAction = () => 
+            {
+                // Llama al método que has definido
+                // Si decides cambiarlo para que reciba ID específico por parámetro, usa:
+                // service.DisconnectInstance(inst.ID.ToString());
+                service.DisconnectInstance(); 
+            };
+            btnDisconnect.userData = disconnectAction;
+            btnDisconnect.clicked += disconnectAction;
         }
 
         el.style.height = Mathf.Max(24f, _fontSize * 2.4f);
