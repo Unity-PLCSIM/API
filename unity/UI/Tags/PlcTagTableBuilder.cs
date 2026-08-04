@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
+using System.Linq;
 
 public static class PlcTagTableBuilder
 {
@@ -48,18 +49,56 @@ public static class PlcTagTableBuilder
     // -- Anchos de columna (proporcionales, se recalculan con el ancho) ---------
     // Las proporciones suman 1.0; se multiplican por el ancho útil del panel.
 
-    private const float PWName = 0.26f;
+    // <-- AÑADIDO: Redistribución de porcentajes
+    private const float PWMenu = 0.05f;
+    private const float PWName = 0.22f; 
     private const float PWType = 0.18f;
     private const float PWVal  = 0.14f;
     private const float PWArea = 0.06f;
-    private const float PWMod  = 0.36f;   // el resto
+    private const float PWMod  = 0.35f; 
 
     // Ancho de referencia usado en Build(); se actualiza con SetPanelWidth
     private static float _panelWidth = 640f;
 
+    private static float _pwNameDynamic = PWName;
+    private static float _pwValDynamic  = PWVal;
+
     public static void SetPanelWidth(float w) => _panelWidth = Mathf.Max(w, 100f);
 
+    public static void AdjustColumnWidths(List<RowData> items)
+    {
+        if (items == null || items.Count == 0) return;
+
+        int maxChars = 0;
+        foreach (var row in items)
+            if (row.Name != null && row.Name.Length > maxChars)
+                maxChars = row.Name.Length;
+
+        float charWidth = _fontSize * 0.65f;
+        float neededWidth = maxChars * charWidth + 16f;
+        float neededProportion = neededWidth / _panelWidth;
+
+        _pwNameDynamic = Mathf.Clamp(neededProportion, 0.18f, 0.45f); // <-- MODIFICADO
+        float remaining = 1f - _pwNameDynamic - PWMenu - PWType - PWArea - PWMod; // <-- MODIFICADO (Incluye PWMenu)
+        _pwValDynamic = Mathf.Max(0.08f, remaining);
+    }
+
     private static float W(float proportion) => Mathf.Floor(_panelWidth * proportion);
+
+    public static void RefreshHeader(VisualElement header)
+    {
+        if (header == null) { Debug.Log("HEADER ES NULL"); return; }
+        var cells = header.Children().ToList();
+        Debug.Log($"Celdas en header: {cells.Count} | _pwNameDynamic: {_pwNameDynamic} | W: {W(_pwNameDynamic)}");
+        if (cells.Count < 6) return; // <-- MODIFICADO (de 5 a 6)
+        
+        cells[0].style.width = W(PWMenu); // <-- AÑADIDO
+        cells[1].style.width = W(_pwNameDynamic);
+        cells[2].style.width = W(PWType);
+        cells[3].style.width = W(_pwValDynamic);
+        cells[4].style.width = W(PWArea);
+        cells[5].style.width = W(PWMod);
+    }
 
     // -- Modelo de fila ---------------------------------------------------------
 
@@ -82,9 +121,10 @@ public static class PlcTagTableBuilder
         row.style.borderBottomColor = ColAccent;
         row.style.paddingBottom     = 4f;
 
-        row.Add(HeaderCell("Nombre",    PWName));
+        row.Add(HeaderCell("", PWMenu)); // <-- AÑADIDO
+        row.Add(HeaderCell("Nombre",    _pwNameDynamic));
         row.Add(HeaderCell("Tipo",      PWType));
-        row.Add(HeaderCell("Valor",     PWVal));
+        row.Add(HeaderCell("Valor",     _pwValDynamic));
         row.Add(HeaderCell("E/S",       PWArea));
         row.Add(HeaderCell("Modificar", PWMod));
 
@@ -93,7 +133,8 @@ public static class PlcTagTableBuilder
 
     public static ListView Build(
         List<RowData>          items,
-        Action<string, string> onWriteRequested)
+        Action<string, string> onWriteRequested,
+        Action<string, VisualElement> onMenuClick) // <-- MODIFICADO
     {
         // Altura de fila escala con la fuente: fuente * 2.4 aprox, mínimo 24px
         float itemHeight = Mathf.Max(24f, _fontSize * 2.4f);
@@ -102,7 +143,7 @@ public static class PlcTagTableBuilder
             items,
             itemHeight,
             MakeItem,
-            (el, i) => BindItem(el, i, items, onWriteRequested))
+            (el, i) => BindItem(el, i, items, onWriteRequested, onMenuClick)) // <-- MODIFICADO
         {
             selectionType = SelectionType.None,
             showAlternatingRowBackgrounds = AlternatingRowBackground.None,
@@ -126,9 +167,19 @@ public static class PlcTagTableBuilder
         var row = MakeRow(Color.clear);
         row.name = "plc-row";
 
-        row.Add(DataCell("", PWName, "cell-name"));
+        // --- Celda del Menú --- // <-- AÑADIDO (BLOQUE)
+        var menuCell = new VisualElement { name = "cell-menu" };
+        menuCell.style.width = W(PWMenu); menuCell.style.flexShrink = 0f; menuCell.style.alignItems = Align.Center; menuCell.style.justifyContent = Justify.Center;
+        var btnMenu = new Button { name = "btn-menu", text = "⋮" };
+        btnMenu.style.width = 18f; btnMenu.style.height = 18f; btnMenu.style.paddingLeft = 0f; btnMenu.style.paddingRight = 0f; btnMenu.style.paddingTop = 0f; btnMenu.style.paddingBottom = 0f; btnMenu.style.fontSize = 13f;
+        btnMenu.style.backgroundColor = new Color(0.15f, 0.16f, 0.18f, 1f); btnMenu.style.color = ColText; btnMenu.style.borderTopWidth = 0f; btnMenu.style.borderBottomWidth = 0f; btnMenu.style.borderLeftWidth = 0f; btnMenu.style.borderRightWidth = 0f;
+        menuCell.Add(btnMenu);
+        row.Add(menuCell);
+        // ----------------------
+
+        row.Add(DataCell("", _pwNameDynamic, "cell-name"));
         row.Add(DataCell("", PWType, "cell-type"));
-        row.Add(DataCell("", PWVal,  "cell-val"));
+        row.Add(DataCell("", _pwValDynamic,  "cell-val"));
         row.Add(DataCell("", PWArea, "cell-area"));
 
         // Celda Modificar
@@ -170,7 +221,8 @@ public static class PlcTagTableBuilder
         VisualElement          el,
         int                    index,
         List<RowData>          items,
-        Action<string, string> onWrite)
+        Action<string, string> onWrite,
+        Action<string, VisualElement> onMenuClick) // <-- MODIFICADO
     {
         if (index < 0 || index >= items.Count) return;
         RowData rd = items[index];
@@ -179,9 +231,10 @@ public static class PlcTagTableBuilder
         el.style.backgroundColor = index % 2 == 0 ? ColRowEven : ColRowOdd;
 
         // Actualizar anchos proporcionales (pueden haber cambiado si el panel se redimensionó)
-        UpdateCellWidth(el, "cell-name", PWName);
+        UpdateCellWidth(el, "cell-menu", PWMenu); // <-- AÑADIDO
+        UpdateCellWidth(el, "cell-name", _pwNameDynamic);
         UpdateCellWidth(el, "cell-type", PWType);
-        UpdateCellWidth(el, "cell-val",  PWVal);
+        UpdateCellWidth(el, "cell-val",  _pwValDynamic);
         UpdateCellWidth(el, "cell-area", PWArea);
         UpdateModCellWidths(el);
 
@@ -194,6 +247,14 @@ public static class PlcTagTableBuilder
         // Altura de fila acorde a la fuente
         float rowH = Mathf.Max(24f, _fontSize * 2.4f);
         el.style.height = rowH;
+
+        // --- Lógica Botón Menú --- // <-- AÑADIDO (BLOQUE)
+        var btnMenu = el.Q<Button>("btn-menu");
+        if (btnMenu.userData is Action oldMenu) btnMenu.clicked -= oldMenu;
+        Action openMenu = () => onMenuClick?.Invoke(rd.Name, btnMenu);
+        btnMenu.userData = openMenu;
+        btnMenu.clicked += openMenu;
+        // -------------------------
 
         // Celda Modificar
         var dash    = el.Q<Label>("mod-dash");

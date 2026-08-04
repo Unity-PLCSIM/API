@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq; // <-- AÑADIDO
 using UnityEngine;
 
 public class PlcTagDataService : MonoBehaviour
@@ -43,7 +44,22 @@ public class PlcTagDataService : MonoBehaviour
         if (Application.isPlaying)
         {
             DontDestroyOnLoad(gameObject);
+            LoadCustomTablesFromPrefs(); // <-- AÑADIDO
         }
+    }
+
+    // -- Clases para Persistencia (Tablas Custom) ------------------------------- // <-- AÑADIDO (BLOQUE)
+    [Serializable]
+    public class CustomTableDef
+    {
+        public string Name;
+        public List<string> Tags = new();
+    }
+
+    [Serializable]
+    private class CustomTablesWrapper
+    {
+        public List<CustomTableDef> Tables = new();
     }
 
     // -- Modelo de datos público ------------------------------------------------
@@ -64,9 +80,11 @@ public class PlcTagDataService : MonoBehaviour
 
     private readonly Dictionary<string, TagEntry> _tags  = new();
     private readonly List<string>                 _order = new();
+    private List<CustomTableDef>                  _customTables = new(); // <-- AÑADIDO
 
     public IReadOnlyList<string>                        Order => _order;
     public IReadOnlyDictionary<string, TagEntry>        Tags  => _tags;
+    public IReadOnlyList<CustomTableDef>                CustomTables => _customTables; // <-- AÑADIDO
 
     public bool   IsLoading { get; private set; }
     public string StatusMessage { get; private set; } = "Sin datos — pulsa 'Cargar'";
@@ -81,6 +99,66 @@ public class PlcTagDataService : MonoBehaviour
 
     /// <summary>Disparado cuando el estado/loading cambia para que la UI actualice indicadores.</summary>
     public event Action<string, bool> OnStatusChanged;  // (message, isError)
+
+    public event Action OnCustomTablesChanged; // <-- AÑADIDO
+
+    // -- API de Tablas Custom --------------------------------------------------- // <-- AÑADIDO (BLOQUE)
+
+    public void CreateCustomTable(string tableName)
+    {
+        if (string.IsNullOrWhiteSpace(tableName) || _customTables.Any(t => t.Name == tableName)) return;
+        _customTables.Add(new CustomTableDef { Name = tableName });
+        SaveCustomTablesToPrefs();
+        OnCustomTablesChanged?.Invoke();
+    }
+
+    public void DeleteCustomTable(string tableName)
+    {
+        _customTables.RemoveAll(t => t.Name == tableName);
+        SaveCustomTablesToPrefs();
+        OnCustomTablesChanged?.Invoke();
+    }
+
+    public void AddTagToTable(string tableName, string tagName)
+    {
+        var table = _customTables.FirstOrDefault(t => t.Name == tableName);
+        if (table != null && !table.Tags.Contains(tagName))
+        {
+            table.Tags.Add(tagName);
+            SaveCustomTablesToPrefs();
+            OnCustomTablesChanged?.Invoke();
+        }
+    }
+
+    public void RemoveTagFromTable(string tableName, string tagName)
+    {
+        var table = _customTables.FirstOrDefault(t => t.Name == tableName);
+        if (table != null && table.Tags.Contains(tagName))
+        {
+            table.Tags.Remove(tagName);
+            SaveCustomTablesToPrefs();
+            OnCustomTablesChanged?.Invoke();
+        }
+    }
+
+    private void SaveCustomTablesToPrefs()
+    {
+        var wrapper = new CustomTablesWrapper { Tables = _customTables };
+        string json = JsonUtility.ToJson(wrapper);
+        PlayerPrefs.SetString("PlcCustomTables", json);
+        PlayerPrefs.Save();
+    }
+
+    private void LoadCustomTablesFromPrefs()
+    {
+        string json = PlayerPrefs.GetString("PlcCustomTables", "");
+        if (!string.IsNullOrEmpty(json))
+        {
+            var wrapper = JsonUtility.FromJson<CustomTablesWrapper>(json);
+            if (wrapper != null && wrapper.Tables != null)
+                _customTables = wrapper.Tables;
+        }
+    }
 
     // -- API pública ------------------------------------------------------------
 

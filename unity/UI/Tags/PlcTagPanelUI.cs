@@ -13,6 +13,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 using System.Collections.Generic;
+using System.Linq; 
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -36,6 +37,14 @@ public class PlcTagPanelUI : MonoBehaviour
     private VisualElement _resizeHandle;
     private TextField _searchField;
     private string    _currentSearch = "";
+
+    // -- Elementos Custom Tables -- 
+    private DropdownField _tableDropdown;
+    private Button        _btnAddTable;
+    private Button        _btnDelTable;
+    private TextField     _newTableField;
+    private string        _activeTableName = "Principal";
+    private VisualElement _contextMenu;
 
     // -- Drag & Resize ----------------------------------------------------------
 
@@ -129,31 +138,52 @@ public class PlcTagPanelUI : MonoBehaviour
         titleLabel.style.flexGrow                = 1f;
         _titleBar.Add(titleLabel);
 
+        // --- Controles Custom Tables ---
+        _tableDropdown = new DropdownField();
+        _tableDropdown.style.width = 120f;
+        _tableDropdown.style.height = 22f;
+        StyleDropdownField(_tableDropdown); // Estilo corregido aplicado
+        _tableDropdown.RegisterValueChangedCallback(e => {
+            _activeTableName = e.newValue;
+            _btnDelTable.style.display = _activeTableName == "Principal" ? DisplayStyle.None : DisplayStyle.Flex;
+            RefreshListFromService();
+        });
+        _titleBar.Add(_tableDropdown);
+
+        _btnAddTable = new Button(ShowNewTableInput) { text = "+" };
+        StyleTopButton(_btnAddTable, compact: true);
+        _btnAddTable.style.marginLeft = 4f;
+        _titleBar.Add(_btnAddTable);
+
+        _btnDelTable = new Button(() => PlcTagDataService.Instance.DeleteCustomTable(_activeTableName)) { text = "-" };
+        StyleTopButton(_btnDelTable, compact: true);
+        _btnDelTable.style.marginLeft = 4f;
+        _btnDelTable.style.display = DisplayStyle.None;
+        _titleBar.Add(_btnDelTable);
+
+        _newTableField = new TextField();
+        _newTableField.style.width = 100f;
+        _newTableField.style.height = 22f; 
+        _newTableField.style.marginLeft = 4f;
+        _newTableField.style.display = DisplayStyle.None;
+        StyleInnerField(_newTableField, "unity-text-field__input"); 
+        _newTableField.RegisterCallback<KeyDownEvent>(e => {
+            if (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter) {
+                PlcTagDataService.Instance.CreateCustomTable(_newTableField.value);
+                _newTableField.style.display = DisplayStyle.None;
+                _activeTableName = _newTableField.value; 
+            }
+            if (e.keyCode == KeyCode.Escape) _newTableField.style.display = DisplayStyle.None;
+        });
+        _titleBar.Add(_newTableField);
+        // -------------------------------- //
+
         _searchField = new TextField { name = "search-field" };
         _searchField.style.width       = 140f;
         _searchField.style.height      = 22f;
         _searchField.style.marginRight = 10f;
         
-        // Limpiar el contenedor exterior de Unity
-        _searchField.style.backgroundColor = Color.clear;
-        _searchField.style.borderTopWidth  = 0f; _searchField.style.borderBottomWidth = 0f;
-        _searchField.style.borderLeftWidth = 0f; _searchField.style.borderRightWidth  = 0f;
-
-        // Estilar el input interno cuando se adjunta al panel
-        _searchField.RegisterCallback<AttachToPanelEvent>(e => 
-        {
-            var input = _searchField.Q(className: "unity-text-field__input");
-            if (input == null) return;
-            input.style.backgroundColor = new Color(0.18f, 0.19f, 0.21f, 1f);
-            input.style.color           = ColText;
-            input.style.borderTopLeftRadius     = 3f; input.style.borderTopRightRadius    = 3f;
-            input.style.borderBottomLeftRadius  = 3f; input.style.borderBottomRightRadius = 3f;
-            input.style.borderTopColor    = ColBorder; input.style.borderBottomColor = ColBorder;
-            input.style.borderLeftColor   = ColBorder; input.style.borderRightColor  = ColBorder;
-            input.style.borderTopWidth    = 1f; input.style.borderBottomWidth = 1f;
-            input.style.borderLeftWidth   = 1f; input.style.borderRightWidth  = 1f;
-            input.style.paddingTop        = 0f; input.style.paddingBottom = 0f;
-        });
+        StyleInnerField(_searchField, "unity-text-field__input");
 
         // Evento: Filtrar cada vez que el usuario teclea algo
         _searchField.RegisterValueChangedCallback(evt => {
@@ -187,7 +217,7 @@ public class PlcTagPanelUI : MonoBehaviour
         _panel.Add(_header);
 
         // ListView — La altura ahora la gestiona Flexbox
-        _listView = PlcTagTableBuilder.Build(_rows, OnWriteRequested);
+        _listView = PlcTagTableBuilder.Build(_rows, OnWriteRequested, OnRowMenuClick);
         _listView.style.paddingLeft  = 2f;
         _listView.style.paddingRight = 2f;
         _panel.Add(_listView);
@@ -210,7 +240,40 @@ public class PlcTagPanelUI : MonoBehaviour
 
         _root.Add(_panel);
 
+        // --- Menú contextual flotante custom --- 
+        _contextMenu = new VisualElement { name = "custom-context-menu" };
+        _contextMenu.style.position = Position.Absolute;
+        _contextMenu.style.display = DisplayStyle.None;
+        _contextMenu.style.backgroundColor = ColTopBar;
+        ApplyBorder(_contextMenu, ColBorder, 1f, 4f);
+        _root.Add(_contextMenu);
+
+        // Ocultar si hacemos clic fuera
+        _root.RegisterCallback<PointerDownEvent>(e => {
+            if (_contextMenu.style.display == DisplayStyle.Flex && e.target != _contextMenu && !_contextMenu.Contains(e.target as VisualElement))
+                _contextMenu.style.display = DisplayStyle.None;
+        });
+
         RegisterDragAndResize();
+    }
+
+    // -- Helpers Custom Tables -------------------------------------------------- 
+    private void ShowNewTableInput()
+    {
+        _newTableField.style.display = DisplayStyle.Flex;
+        _newTableField.value = "";
+        _newTableField.Focus();
+    }
+    
+    private void UpdateDropdownOptions()
+    {
+        var choices = new List<string> { "Principal" };
+        choices.AddRange(PlcTagDataService.Instance.CustomTables.Select(t => t.Name));
+        _tableDropdown.choices = choices;
+        if (!choices.Contains(_activeTableName)) _activeTableName = "Principal";
+        _tableDropdown.SetValueWithoutNotify(_activeTableName);
+        if (_btnDelTable != null) 
+            _btnDelTable.style.display = _activeTableName == "Principal" ? DisplayStyle.None : DisplayStyle.Flex;
     }
 
     // -- Altura del ListView ----------------------------------------------------
@@ -219,19 +282,15 @@ public class PlcTagPanelUI : MonoBehaviour
     void OnResizeFinished()
     {
         float panelW = _panel.resolvedStyle.width;
-
-        // Fuente proporcional al ancho
         float t        = Mathf.InverseLerp(PanelWMin, PanelWMax, panelW);
         float fontSize = Mathf.Round(Mathf.Lerp(FontMin, FontMax, t));
         
-        // --- ARREGLO BOTÓN OK (Resize): Restamos 36f para scroll y padding ---
         PlcTagTableBuilder.SetPanelWidth(panelW - 55f);
         PlcTagTableBuilder.SetFontSize(fontSize);
+        PlcTagTableBuilder.AdjustColumnWidths(_rows);  // recalcular con nuevo ancho
+        PlcTagTableBuilder.RefreshHeader(_header);      // actualizar header
 
-        // --- ARREGLO REBUILD: Actualizamos el itemHeight del ListView ---
         _listView.fixedItemHeight = Mathf.Max(24f, fontSize * 2.4f);
-
-        // Rebuild solo aquí, una vez por resize completo
         _listView.Rebuild();
     }
 
@@ -304,11 +363,59 @@ public class PlcTagPanelUI : MonoBehaviour
         _btnToggle.text      = visible ? "Tags PLC" : "Ocultar Tags";
         if (!visible && _rows.Count == 0)
             PlcTagDataService.Instance.Load();
+        else if (visible) 
+            UpdateDropdownOptions(); 
     }
 
     void OnRefreshClicked() => PlcTagDataService.Instance.Load();
     void OnWriteRequested(string tagName, string newValue) =>
         PlcTagDataService.Instance.WriteInput(tagName, newValue);
+
+    // --- Manejo del Clic del Menú del Botón --- 
+    void OnRowMenuClick(string tagName, VisualElement anchor)
+    {
+        _contextMenu.Clear();
+        _contextMenu.style.display = DisplayStyle.Flex;
+        
+        Vector2 localPos = _root.WorldToLocal(anchor.worldBound.position);
+        _contextMenu.style.left = localPos.x;
+        _contextMenu.style.top = localPos.y + anchor.worldBound.height + 2f; 
+
+        var svc = PlcTagDataService.Instance;
+
+        if (_activeTableName == "Principal")
+        {
+            if (svc.CustomTables.Count == 0)
+            {
+                _contextMenu.Add(new Label("Crea una tabla nueva") { style = { color = ColMuted, paddingBottom = 6, paddingTop = 6, paddingLeft = 10, paddingRight = 10, fontSize = 11f } });
+                return;
+            }
+            foreach (var table in svc.CustomTables)
+            {
+                string tName = table.Name;
+                bool alreadyIn = table.Tags.Contains(tagName);
+                var btn = new Button(() => {
+                    if (!alreadyIn) svc.AddTagToTable(tName, tagName);
+                    _contextMenu.style.display = DisplayStyle.None;
+                }) { text = alreadyIn ? $"✓ En {tName}" : $"Añadir a -> {tName}" };
+                StyleTopButton(btn, compact:true);
+                btn.style.borderTopWidth = btn.style.borderBottomWidth = btn.style.borderLeftWidth = btn.style.borderRightWidth = 0f;
+                if (alreadyIn) btn.style.color = ColMuted;
+                _contextMenu.Add(btn);
+            }
+        }
+        else
+        {
+            string act = _activeTableName; 
+            var btn = new Button(() => {
+                svc.RemoveTagFromTable(act, tagName);
+                _contextMenu.style.display = DisplayStyle.None;
+            }) { text = $"Quitar de '{act}'" };
+            StyleTopButton(btn, compact:true);
+            btn.style.borderTopWidth = btn.style.borderBottomWidth = btn.style.borderLeftWidth = btn.style.borderRightWidth = 0f;
+            _contextMenu.Add(btn);
+        }
+    }
 
     // -- Suscripción al servicio ------------------------------------------------
 
@@ -319,6 +426,7 @@ public class PlcTagPanelUI : MonoBehaviour
         svc.OnTagsLoaded    += HandleTagsLoaded;
         svc.OnTagUpdated    += HandleTagUpdated;
         svc.OnStatusChanged += HandleStatusChanged;
+        svc.OnCustomTablesChanged += HandleCustomTablesChanged; 
     }
 
     void UnsubscribeFromService()
@@ -328,12 +436,20 @@ public class PlcTagPanelUI : MonoBehaviour
         svc.OnTagsLoaded    -= HandleTagsLoaded;
         svc.OnTagUpdated    -= HandleTagUpdated;
         svc.OnStatusChanged -= HandleStatusChanged;
+        svc.OnCustomTablesChanged -= HandleCustomTablesChanged; 
     }
 
     // -- Handlers del servicio --------------------------------------------------
 
     void HandleTagsLoaded(IReadOnlyList<string> order)
     {
+        UpdateDropdownOptions(); 
+        RefreshListFromService();
+    }
+
+    void HandleCustomTablesChanged() 
+    {
+        UpdateDropdownOptions();
         RefreshListFromService();
     }
 
@@ -343,7 +459,13 @@ public class PlcTagPanelUI : MonoBehaviour
         if (svc == null) return;
 
         _rows.Clear();
-        foreach (string name in svc.Order)
+        
+        // Decidir qué tags mostrar
+        IEnumerable<string> tagsToDisplay = _activeTableName == "Principal" 
+            ? svc.Order 
+            : svc.CustomTables.FirstOrDefault(t => t.Name == _activeTableName)?.Tags ?? new List<string>();
+
+        foreach (string name in tagsToDisplay)
         {
             if (!svc.Tags.TryGetValue(name, out var td)) continue;
             
@@ -363,6 +485,8 @@ public class PlcTagPanelUI : MonoBehaviour
                 EditBuffer = td.Value,
             });
         }
+        PlcTagTableBuilder.AdjustColumnWidths(_rows);
+        PlcTagTableBuilder.RefreshHeader(_header);
         _listView?.Rebuild();
     }
 
@@ -387,6 +511,67 @@ public class PlcTagPanelUI : MonoBehaviour
     }
 
     // -- Helpers de estilo ------------------------------------------------------
+
+    private static void StyleDropdownField(DropdownField dd) 
+    {
+        // Limpiamos los márgenes y bordes exteriores
+        dd.style.backgroundColor = Color.clear;
+        dd.style.borderTopWidth  = 0f; dd.style.borderBottomWidth = 0f;
+        dd.style.borderLeftWidth = 0f; dd.style.borderRightWidth  = 0f;
+        dd.style.marginTop       = 0f; dd.style.marginBottom      = 0f;
+        dd.style.paddingTop      = 0f; dd.style.paddingBottom     = 0f;
+        dd.style.paddingLeft     = 0f; dd.style.paddingRight      = 0f;
+
+        dd.RegisterCallback<AttachToPanelEvent>(e => 
+        {
+            var input = dd.Q(className: "unity-base-popup-field__input");
+            if (input == null) return;
+            
+            input.style.backgroundColor = new Color(0.18f, 0.19f, 0.21f, 1f);
+            input.style.color           = ColText;
+            input.style.borderTopLeftRadius     = 3f; input.style.borderTopRightRadius    = 3f;
+            input.style.borderBottomLeftRadius  = 3f; input.style.borderBottomRightRadius = 3f;
+            input.style.borderTopColor    = ColBorder; input.style.borderBottomColor = ColBorder;
+            input.style.borderLeftColor   = ColBorder; input.style.borderRightColor  = ColBorder;
+            input.style.borderTopWidth    = 1f; input.style.borderBottomWidth = 1f;
+            input.style.borderLeftWidth   = 1f; input.style.borderRightWidth  = 1f;
+            
+            // Fix para evitar corte: limpiar márgenes y paddings del input
+            input.style.marginTop = 0f; input.style.marginBottom = 0f;
+            input.style.paddingTop = 0f; input.style.paddingBottom = 0f;
+            
+            // Buscar el texto (label interno) y alinearlo sin que se aplaste
+            var textElement = input.Q(className: "unity-text-element");
+            if (textElement != null)
+            {
+                textElement.style.unityTextAlign = TextAnchor.MiddleLeft;
+                textElement.style.marginTop = 0f; textElement.style.marginBottom = 0f;
+                textElement.style.paddingTop = 0f; textElement.style.paddingBottom = 0f;
+            }
+        });
+    }
+
+    private static void StyleInnerField(VisualElement field, string innerClassName) 
+    {
+        field.style.backgroundColor = Color.clear;
+        field.style.borderTopWidth  = 0f; field.style.borderBottomWidth = 0f;
+        field.style.borderLeftWidth = 0f; field.style.borderRightWidth  = 0f;
+
+        field.RegisterCallback<AttachToPanelEvent>(e => 
+        {
+            var input = field.Q(className: innerClassName);
+            if (input == null) return;
+            input.style.backgroundColor = new Color(0.18f, 0.19f, 0.21f, 1f);
+            input.style.color           = ColText;
+            input.style.borderTopLeftRadius     = 3f; input.style.borderTopRightRadius    = 3f;
+            input.style.borderBottomLeftRadius  = 3f; input.style.borderBottomRightRadius = 3f;
+            input.style.borderTopColor    = ColBorder; input.style.borderBottomColor = ColBorder;
+            input.style.borderLeftColor   = ColBorder; input.style.borderRightColor  = ColBorder;
+            input.style.borderTopWidth    = 1f; input.style.borderBottomWidth = 1f;
+            input.style.borderLeftWidth   = 1f; input.style.borderRightWidth  = 1f;
+            input.style.paddingTop        = 0f; input.style.paddingBottom = 0f;
+        });
+    }
 
     private static void ApplyBorder(VisualElement el, Color color, float width, float radius)
     {
