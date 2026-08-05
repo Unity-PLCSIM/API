@@ -82,6 +82,36 @@ namespace PlcSimWebApi
 
         // -- Tags ---------------------------------------------------------------
 
+        private string GetTagArea(EArea Area)
+        {
+            string area;
+
+            switch (Area)
+            {
+                case EArea.Input:
+                    area = "E";
+                    break;
+
+                case EArea.Output:
+                    area = "S";
+                    break;
+
+                case EArea.Marker:
+                    area = "M";
+                    break;
+
+                case EArea.DataBlock:
+                    area = "DB";
+                    break;
+
+                default:
+                    area = Area.ToString();
+                    break;
+            }
+
+            return area;
+        }
+
         /// <summary>
         /// Devuelve la lista completa de tags con nombre, tipo, valor actual y área (E/S).
         /// Excluye tags internos de sistema (RTG, F_SystemInfo).
@@ -113,8 +143,7 @@ namespace PlcSimWebApi
                             valorActual = "Error al leer";
                         }
 
-                        string area = tag.Area == EArea.Input ? "E" :
-                                      tag.Area == EArea.Output ? "S" : "O";
+                        string area = GetTagArea(tag.Area);
 
                         result.Add(new
                         {
