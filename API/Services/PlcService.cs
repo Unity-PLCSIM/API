@@ -36,7 +36,7 @@ namespace PlcSimWebApi
         private readonly object _lock = new object();
 
         // Detección de cambios en salidas
-        private Dictionary<string, string> _lastOutputValues = new Dictionary<string, string>();
+        private Dictionary<string, TagChangeDto> _lastOutputValues = new Dictionary<string, TagChangeDto>();
         private List<object> _pendingOutputChanges = new List<object>();
         private readonly object _changesLock = new object();
 
@@ -438,17 +438,8 @@ namespace PlcSimWebApi
                     catch { continue; }
                     TypeNames.TryGetValue(outputTags[i].PrimitiveDataType, out string typeName);
 
-                    if (!_lastOutputValues.TryGetValue(name, out string oldVal) || oldVal != newVal)
+                    if (!_lastOutputValues.TryGetValue(name, out TagChangeDto oldDto) || oldDto.Value != newVal)
                     {
-                        _lastOutputValues[name] = newVal;
-
-                        for (int j = _pendingOutputChanges.Count - 1; j >= 0; j--)
-                        {
-                            if (((TagChangeDto)_pendingOutputChanges[j]).Name == name)
-                                _pendingOutputChanges.RemoveAt(j);
-                        }
-
-                        // Crear el objeto una vez y reutilizarlo en ambas listas
                         var cambio = new TagChangeDto
                         {
                             Name = name,
@@ -456,6 +447,15 @@ namespace PlcSimWebApi
                             Value = newVal,
                             Area = "S"
                         };
+
+                        // Actualizamos el diccionario con el objeto completo
+                        _lastOutputValues[name] = cambio;
+
+                        for (int j = _pendingOutputChanges.Count - 1; j >= 0; j--)
+                        {
+                            if (((TagChangeDto)_pendingOutputChanges[j]).Name == name)
+                                _pendingOutputChanges.RemoveAt(j);
+                        }
 
                         _pendingOutputChanges.Add(cambio);   // compatibilidad REST existente
                         cambiosEsteCiclo.Add(cambio);        // para WebSocket
@@ -555,6 +555,14 @@ namespace PlcSimWebApi
                 instanceToDelete.PowerOff();
 
             instanceToDelete.UnregisterInstance();
+        }
+
+        public List<TagChangeDto> GetCachedOutputs()
+        {
+            lock (_changesLock)
+            {
+                return new System.Collections.Generic.List<TagChangeDto>(_lastOutputValues.Values);
+            }
         }
     }
 

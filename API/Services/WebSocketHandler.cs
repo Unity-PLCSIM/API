@@ -121,6 +121,23 @@ namespace PlcSimWebApi
 
             Console.WriteLine($"[WS] Cliente conectado: {id} | Total: {_clients.Count}");
 
+            // --- PARCHE DE ESTADO INICIAL ---
+            try
+            {
+                var initialState = PlcService.Instance.GetCachedOutputs();
+                if (initialState.Count > 0)
+                {
+                    string json = SerializeChanges(initialState);
+                    byte[] bytes = Encoding.UTF8.GetBytes(json);
+                    await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WS] Error enviando estado inicial a {id}: {ex.Message}");
+            }
+            // --------------------------------
+
             try
             {
                 byte[] buffer = new byte[256];
