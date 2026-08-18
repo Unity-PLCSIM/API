@@ -57,16 +57,16 @@ namespace PlcSimWebApi
             new Dictionary<EPrimitiveDataType, string>
             {
                 { EPrimitiveDataType.Bool,   "Bool" },
-                { EPrimitiveDataType.UInt8,  "Byte (UInt8)" },
-                { EPrimitiveDataType.Int8,   "SInt (Int8)" },
-                { EPrimitiveDataType.Int16,  "Int (Int16)" },
-                { EPrimitiveDataType.UInt16, "UInt (UInt16)" },
-                { EPrimitiveDataType.Int32,  "DInt (Int32)" },
-                { EPrimitiveDataType.UInt32, "UDInt (UInt32)" },
-                { EPrimitiveDataType.Int64,  "LInt (Int64)" },
-                { EPrimitiveDataType.UInt64, "ULInt (UInt64)" },
-                { EPrimitiveDataType.Float,  "Real (Float)" },
-                { EPrimitiveDataType.Double, "LReal (Double)" },
+                { EPrimitiveDataType.UInt8,  "Byte" },
+                { EPrimitiveDataType.Int8,   "SInt" },
+                { EPrimitiveDataType.Int16,  "Int" },
+                { EPrimitiveDataType.UInt16, "UInt" },
+                { EPrimitiveDataType.Int32,  "DInt" },
+                { EPrimitiveDataType.UInt32, "UDInt" },
+                { EPrimitiveDataType.Int64,  "LInt" },
+                { EPrimitiveDataType.UInt64, "ULInt " },
+                { EPrimitiveDataType.Float,  "Real" },
+                { EPrimitiveDataType.Double, "LReal" },
             };
 
         private PlcService() { }
@@ -302,16 +302,16 @@ namespace PlcSimWebApi
                 switch (type)
                 {
                     case "Bool": value = _plcInstance.ReadBool(tag); break;
-                    case "Byte (UInt8)": value = _plcInstance.ReadUInt8(tag); break;
-                    case "SInt (Int8)": value = _plcInstance.ReadInt8(tag); break;
-                    case "Int (Int16)": value = _plcInstance.ReadInt16(tag); break;
-                    case "UInt (UInt16)": value = _plcInstance.ReadUInt16(tag); break;
-                    case "DInt (Int32)": value = _plcInstance.ReadInt32(tag); break;
-                    case "UDInt (UInt32)": value = _plcInstance.ReadUInt32(tag); break;
-                    case "LInt (Int64)": value = _plcInstance.ReadInt64(tag); break;
-                    case "ULInt (UInt64)": value = _plcInstance.ReadUInt64(tag); break;
-                    case "Real (Float)": value = _plcInstance.ReadFloat(tag); break;
-                    case "LReal (Double)": value = _plcInstance.ReadDouble(tag); break;
+                    case "Byte": value = _plcInstance.ReadUInt8(tag); break;
+                    case "SInt": value = _plcInstance.ReadInt8(tag); break;
+                    case "Int": value = _plcInstance.ReadInt16(tag); break;
+                    case "UInt": value = _plcInstance.ReadUInt16(tag); break;
+                    case "DInt": value = _plcInstance.ReadInt32(tag); break;
+                    case "UDInt": value = _plcInstance.ReadUInt32(tag); break;
+                    case "LInt": value = _plcInstance.ReadInt64(tag); break;
+                    case "ULInt": value = _plcInstance.ReadUInt64(tag); break;
+                    case "Real": value = _plcInstance.ReadFloat(tag); break;
+                    case "LReal": value = _plcInstance.ReadDouble(tag); break;
                     default: throw new Exception("Tipo no soportado.");
                 }
                 return FormatValue(value);
